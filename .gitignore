@@ -31,6 +31,3 @@ Thumbs.db
 # kubeseal working files
 sealed-secrets-public-key.pem
 /tmp/
-
-# Nested Git repos — never track these in the outer repo
-homelab-git-mgmt/

@@ -12,11 +12,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install kubectl
-        uses: azure/setup-kubectl@v3
-        with:
-          version: latest
-
       - name: Install yamllint
         run: pip install yamllint
 
@@ -35,16 +30,8 @@ jobs:
               | grep -v '^./.git/' \
               | tr '\n' ' ')
 
-      - name: Validate Kubernetes resources (client-side)
-        run: |
-          set -euo pipefail
-          for f in $(find . -name '*.yaml' -o -name '*.yml'); do
-            if [[ "$f" == "./.github/"* || "$f" == "./docs/"* || "$f" == "./scripts/"* ]]; then
-              continue
-            fi
-            echo "Validating $f"
-            kubectl apply --dry-run=client -f "$f" || { echo "FAIL: $f"; exit 1; }
-          done
+      - name: Validate Kubernetes resources (structural)
+        run: python scripts/validate_k8s.py
 
       - name: Check image tags
         run: python scripts/check_image_tags.py

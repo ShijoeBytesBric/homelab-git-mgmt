@@ -304,7 +304,7 @@ prometheus:
       volumes:
         - name: data
           persistentVolume:
-            claimName: monitoring-prometheus
+            claimName: monitoring-prometheus-data
   ingress:
     enabled: false
 
@@ -363,7 +363,7 @@ Skeleton committed in `apps/openwrt/`.
 - Helm chart, values in `apps/monitoring/values.yaml`.
 - ArgoCD `Application` CR references the chart repo, not a path in `homelab-apps`.
 - No app-level manifests — the chart renders everything.
-- PVC for Prometheus data — the chart can create one, or you pre-create it. The values file references a claim name `monitoring-prometheus`; either create that PVC in the app dir or let the chart create it (check the chart's PVC settings).
+- PVC for Prometheus data — the chart can create one, or you pre-create it. The values file references a claim name `monitoring-prometheus-data`; either create that PVC in the app dir or let the chart create it (check the chart's PVC settings).
 - No per-app ServiceMonitors in v1 (see `docs/PLAN.md`).
 
 Skeleton committed in `apps/monitoring/`.
