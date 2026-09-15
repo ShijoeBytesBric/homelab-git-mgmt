@@ -265,7 +265,7 @@ Add cluster-level monitoring with the `kube-prometheus-stack` Helm chart. This i
 ## File Layout (what we'll create)
 
 ```
-HomeLabCluster/
+homelab-apps/
 ├── docs/
 │   ├── PLAN.md              # this file
 │   ├── argocd-setup.md      # ArgoCD install + repo + AppProject + Application walkthrough

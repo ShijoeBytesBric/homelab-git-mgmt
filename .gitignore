@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+.env
+
+# Virtualenv
+*.egg-info/
+*.egg
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets (never commit plaintext secrets)
+*.env
+.env.*
+
+# kubeseal working files
+sealed-secrets-public-key.pem
+/tmp/
+
+# Nested Git repos — never track these in the outer repo
+homelab-git-mgmt/

@@ -1,6 +1,6 @@
 # ArgoCD Setup — HomeLab Cluster
 
-This doc walks through installing ArgoCD, configuring repo access and the AppProject, and deploying apps via ArgoCD Application CRs. Everything here assumes the decisions locked in `PLAN.md`: kubeadm cluster, one GitHub org with two repos (`homelab-git-mgmt` for this code and `HomeLabCluster` for the deployable cluster GitOps), SealedSecrets for secrets, and SSH deploy-key access to the GitOps repo.
+This doc walks through installing ArgoCD, configuring repo access and the AppProject, and deploying apps via ArgoCD Application CRs. Everything here assumes the decisions locked in `PLAN.md`: kubeadm cluster, one GitHub org with two repos (`homelab-git-mgmt` for this code and `homelab-apps` for the deployable cluster GitOps), SealedSecrets for secrets, and SSH deploy-key access to the GitOps repo.
 
 ---
 
@@ -8,14 +8,14 @@ This doc walks through installing ArgoCD, configuring repo access and the AppPro
 
 - A running Kubernetes cluster (kubeadm) with a working `kubectl` context.
 - `helm` v3 installed on the machine running these commands.
-- The `homelab-git-mgmt` repo exists on GitHub (this repo). The `HomeLabCluster` repo will be created later once there's content to push.
-- SSH key pair for ArgoCD to read the `HomeLabCluster` repo. If you don't have one:
+- The `homelab-git-mgmt` repo exists on GitHub (this repo). The `homelab-apps` repo will be created later once there's content to push.
+- SSH key pair for ArgoCD to read the `homelab-apps` repo. If you don't have one:
 
 ```bash
 ssh-keygen -t ed25519 -C "argocd-deploy-key" -f ~/.ssh/argocd-deploy-key -N ""
 ```
 
-Add the **public** key (`~/.ssh/argocd-deploy-key.pub`) as a deploy key on the `HomeLabCluster` GitHub repo with **read-only** access. Keep the private key for the ArgoCD secret below.
+Add the **public** key (`~/.ssh/argocd-deploy-key.pub`) as a deploy key on the `homelab-apps` GitHub repo with **read-only** access. Keep the private key for the ArgoCD secret below.
 
 ---
 
@@ -64,7 +64,7 @@ When you're ready to expose it permanently, add an Ingress (see the ingress note
 
 ## 3. Register the GitOps repo
 
-ArgoCD needs to be able to read `HomeLabCluster`. The cleanest way for a single read-only repo is an SSH deploy key.
+ArgoCD needs to be able to read `homelab-apps`. The cleanest way for a single read-only repo is an SSH deploy key.
 
 ```bash
 # Create the secret ArgoCD uses to authenticate to the repo
@@ -86,7 +86,7 @@ metadata:
   labels:
     argocd.argoproj.io/secret-type: repository
 stringData:
-  url: git@github.com:<YOUR_GITHUB_USERNAME>/HomeLabCluster.git
+  url: git@github.com:<YOUR_GITHUB_USERNAME>/homelab-apps.git
   sshPrivateKey: |
     <contents of ~/.ssh/argocd-deploy-key>
 ```
@@ -101,7 +101,7 @@ ArgoCD picks up the labeled Secret and registers the repo automatically. Verify:
 
 ```bash
 argocd repo list
-# should show HomeLabCluster with status Successful
+# should show homelab-apps with status Successful
 ```
 
 If the SSH key isn't picked up, restart the repo-server pod:
@@ -126,7 +126,7 @@ metadata:
 spec:
   description: Homelab application group
   sourceRepos:
-    - git@github.com:<YOUR_GITHUB_USERNAME>/HomeLabCluster.git
+    - git@github.com:<YOUR_GITHUB_USERNAME>/homelab-apps.git
   destinations:
     - namespace: jellyfin
       server: https://kubernetes.default.svc
@@ -158,7 +158,7 @@ kubectl apply -f argocd/appproject.yaml
 
 This project:
 
-- Only allows the `HomeLabCluster` repo as a source.
+- Only allows the `homelab-apps` repo as a source.
 - Only allows sync to the four app namespaces (jellyfin, flaresolverr, openwrt, monitoring).
 - Prevents ArgoCD from deleting ResourceQuotas, LimitRanges, and NetworkPolicies (so the project doesn't accidentally remove cluster guardrails).
 - Has selfHeal enabled at the project level — individual apps can override this.
@@ -167,7 +167,7 @@ This project:
 
 ## 5. Deploy apps via Application CRs
 
-Each app gets one `Application` CR in `argocd/applications/`. The CR points at a path in the `HomeLabCluster` repo and specifies the sync policy.
+Each app gets one `Application` CR in `argocd/applications/`. The CR points at a path in the `homelab-apps` repo and specifies the sync policy.
 
 ### Pattern (raw manifests app)
 
@@ -183,7 +183,7 @@ metadata:
 spec:
   project: homelab-apps
   source:
-    repoURL: git@github.com:<YOUR_GITHUB_USERNAME>/HomeLabCluster.git
+    repoURL: git@github.com:<YOUR_GITHUB_USERNAME>/homelab-apps.git
     targetRevision: main
     path: apps/jellyfin
   destination:
@@ -297,7 +297,7 @@ There's a chicken-and-egg problem: ArgoCD needs an Application CR to start synci
 
 1. Install ArgoCD into the cluster (step 2 above).
 2. Apply the `AppProject`, `Repository` secret, and the first `Application` CR **directly** with `kubectl apply` (one-time, manual).
-3. ArgoCD picks up the Application and starts syncing the app from `HomeLabCluster`.
+3. ArgoCD picks up the Application and starts syncing the app from `homelab-apps`.
 4. From then on, any change to the Application CR or app manifests is committed to Git, and ArgoCD reconciles the difference.
 
 After the first app is syncing, commit the bootstrap resources (`AppProject`, `Repository` secret, and the Application CRs) into `homelab-git-mgmt` under `bootstrap/` so the setup is reproducible, but **don't create an ArgoCD Application that syncs the bootstrap dir itself** — that creates a loop. Treat bootstrap as manual-only setup documentation, or guard it with a one-time sync flag. For a homelab, the simplest approach is: document the bootstrap commands in this doc, apply them manually once, and keep the resource YAMLs in `bootstrap/` as reference only.
@@ -338,7 +338,7 @@ The `sealed-secrets-public-key.pem` is exported from the controller:
 kubeseal --fetch-cert > sealed-secrets-public-key.pem
 ```
 
-Commit the resulting `SealedSecret` YAML to `HomeLabCluster` (in the app dir). ArgoCD syncs it, the controller decrypts it, and the real `Secret` appears in the namespace. The plaintext never touches Git.
+Commit the resulting `SealedSecret` YAML to `homelab-apps` (in the app dir). ArgoCD syncs it, the controller decrypts it, and the real `Secret` appears in the namespace. The plaintext never touches Git.
 
 ### Rotation
 
@@ -404,7 +404,7 @@ Where `auth` is an htpasswd file. For a homelab, this is enough; Dex/SSO comes l
 | `argocd/repositories.yaml` | `homelab-git-mgmt` (argocd/) | ArgoCD repo registration — the SSH key Secret |
 | `argocd/applications/*.yaml` | `homelab-git-mgmt` (argocd/) | ArgoCD Application CRs — the sync definitions |
 | `bootstrap/*.yaml` | `homelab-git-mgmt` (bootstrap/) | One-time setup resources — reference only, applied manually |
-| `apps/<name>/*` | `HomeLabCluster` | Deployable app manifests — what ArgoCD syncs into the cluster |
+| `apps/<name>/*` | `homelab-apps` | Deployable app manifests — what ArgoCD syncs into the cluster |
 | `sealed-secrets-public-key.pem` | `homelab-git-mgmt` (bootstrap/ or root) | Public key for sealing secrets — needed to run `kubeseal` |
 
-The `homelab-git-mgmt` repo is ArgoCD's configuration repo (ArgoCD itself, the AppProject, the Application CRs, the repo secret). The `HomeLabCluster` repo is the cluster's desired state (the actual app manifests). This separation is deliberate: it lets you version ArgoCD's own config independently from the apps, and it mirrors how larger GitOps setups split "infrastructure config" from "workload config."
+The `homelab-git-mgmt` repo is ArgoCD's configuration repo (ArgoCD itself, the AppProject, the Application CRs, the repo secret). The `homelab-apps` repo is the cluster's desired state (the actual app manifests). This separation is deliberate: it lets you version ArgoCD's own config independently from the apps, and it mirrors how larger GitOps setups split "infrastructure config" from "workload config."

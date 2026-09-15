@@ -1,12 +1,12 @@
 # App Manifests — HomeLab Cluster
 
-This doc describes the manifest pattern for each app in the `HomeLabCluster` repo and gives concrete examples for Jellyfin, FlareSolverr, OpenWrt, and monitoring. The goal: a consistent, minimal structure per app that ArgoCD can sync, that CI can validate, and that a future admin can understand in under five minutes.
+This doc describes the manifest pattern for each app in the `homelab-apps` repo and gives concrete examples for Jellyfin, FlareSolverr, OpenWrt, and monitoring. The goal: a consistent, minimal structure per app that ArgoCD can sync, that CI can validate, and that a future admin can understand in under five minutes.
 
 ---
 
 ## 1. Workspace layout
 
-Each app lives under `apps/<name>/` in the `HomeLabCluster` repo. The contents are one or both of:
+Each app lives under `apps/<name>/` in the `homelab-apps` repo. The contents are one or both of:
 
 - **Raw manifests** — self-contained K8s YAML files (Deployment, Service, Ingress, ConfigMap, SealedSecret reference, PVC).
 - **Helm values** — `values.yaml` + optional chart files, when using a chart (monitoring does this).
@@ -361,7 +361,7 @@ Skeleton committed in `apps/openwrt/`.
 ### Monitoring (kube-prometheus-stack)
 
 - Helm chart, values in `apps/monitoring/values.yaml`.
-- ArgoCD `Application` CR references the chart repo, not a path in `HomeLabCluster`.
+- ArgoCD `Application` CR references the chart repo, not a path in `homelab-apps`.
 - No app-level manifests — the chart renders everything.
 - PVC for Prometheus data — the chart can create one, or you pre-create it. The values file references a claim name `monitoring-prometheus`; either create that PVC in the app dir or let the chart create it (check the chart's PVC settings).
 - No per-app ServiceMonitors in v1 (see `docs/PLAN.md`).

@@ -6,7 +6,7 @@ This doc describes the CI workflow that validates app and ArgoCD manifests in th
 
 ## 1. What CI does
 
-The workflow validates the manifests in the `homelab-git-mgmt` repo. In this setup, the `homelab-git-mgmt` repo holds ArgoCD's own config (AppProject, Application CRs, repo secret) — the cluster-facing app manifests live in `HomeLabCluster`. The CI for `homelab-git-mgmt` validates the ArgoCD Application CRs (which reference paths in `HomeLabCluster`). When you set up a CI workflow in `HomeLabCluster` as well (recommended), it validates the actual app manifests.
+The workflow validates the manifests in the `homelab-git-mgmt` repo. In this setup, the `homelab-git-mgmt` repo holds ArgoCD's own config (AppProject, Application CRs, repo secret) — the cluster-facing app manifests live in `homelab-apps`. The CI for `homelab-git-mgmt` validates the ArgoCD Application CRs (which reference paths in `homelab-apps`). When you set up a CI workflow in `homelab-apps` as well (recommended), it validates the actual app manifests.
 
 Both repos should have the same validation workflow — the content differs slightly (one validates ArgoCD CRs, the other validates app manifests), but the tooling is identical.
 
@@ -373,7 +373,7 @@ The workflow is meant to stay fast (under a minute on a standard push). If a che
 | Repo | What CI validates | Workflow location |
 |---|---|---|
 | `homelab-git-mgmt` | ArgoCD CRs (AppProject, Application CRs, repo secret) — the `kubectl --dry-run=client` step validates these. The image-tag and namespace checks also run (they're harmless on ArgoCD CRs — ArgoCD CRs don't have container images, and their namespace is `argocd`). | `.github/workflows/validate.yaml` in `homelab-git-mgmt` |
-| `HomeLabCluster` | App manifests (Deployments, Services, Ingresses, etc.) — all checks apply. The namespace check is most useful here (every app dir's resources should match the dir name). | `.github/workflows/validate.yaml` in `HomeLabCluster` |
+| `homelab-apps` | App manifests (Deployments, Services, Ingresses, etc.) — all checks apply. The namespace check is most useful here (every app dir's resources should match the dir name). | `.github/workflows/validate.yaml` in `homelab-apps` |
 
 The two workflows are nearly identical — the only difference is the repo they're in. Copy the same `.github/workflows/validate.yaml` and `.yamllint` to both repos. The scripts live in both repos too (they're self-contained, no external deps beyond `pyyaml`).
 
