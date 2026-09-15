@@ -1,0 +1,61 @@
+name: validate
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: latest
+
+      - name: Install yamllint
+        run: pip install yamllint
+
+      - name: Install Python deps
+        run: pip install pyyaml
+
+      - name: Lint YAML
+        run: |
+          set -euo pipefail
+          # yamllint 1.38 doesn't support --exclude; filter paths manually
+          yamllint -c .yamllint \
+            $(find . -name '*.yaml' -o -name '*.yml' \
+              | grep -v '^./.github/' \
+              | grep -v '^./docs/' \
+              | grep -v '^./scripts/' \
+              | grep -v '^./.git/' \
+              | tr '\n' ' ')
+
+      - name: Validate Kubernetes resources (client-side)
+        run: |
+          set -euo pipefail
+          for f in $(find . -name '*.yaml' -o -name '*.yml'); do
+            if [[ "$f" == "./.github/"* || "$f" == "./docs/"* || "$f" == "./scripts/"* ]]; then
+              continue
+            fi
+            echo "Validating $f"
+            kubectl apply --dry-run=client -f "$f" || { echo "FAIL: $f"; exit 1; }
+          done
+
+      - name: Check image tags
+        run: python scripts/check_image_tags.py
+
+      - name: Check namespace consistency
+        run: python scripts/check_namespace.py
+
+      - name: Check ServiceMonitor pairing (optional)
+        run: |
+          if [ -f scripts/check_servicemonitor.py ]; then
+            python scripts/check_servicemonitor.py
+          else
+            echo "check_servicemonitor.py not present — skipping"
+          fi

@@ -1,0 +1,14 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: argocd-applier
+  namespace: openwrt
+subjects:
+  - kind: ServiceAccount
+    name: argocd-server
+    namespace: argocd
+roleRef:
+  kind: Role
+  name: argocd-applier
+  apiGroup: rbac.authorization.k8s.io

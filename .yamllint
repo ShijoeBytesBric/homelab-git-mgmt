@@ -1,0 +1,14 @@
+extends: default
+
+rules:
+  line-length:
+    max: 120
+    level: warning
+  truthy:
+    allowed-values: ['true', 'false']
+    level: warning
+  comments:
+    level: warning
+  indentation:
+    indent-sequences: consistent
+    level: warning

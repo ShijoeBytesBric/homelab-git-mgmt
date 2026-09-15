@@ -1,0 +1,31 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: homelab-apps
+  namespace: argocd
+spec:
+  description: Homelab application group
+  sourceRepos:
+    - git@github.com:shijoe/HomeLabCluster.git
+  destinations:
+    - namespace: jellyfin
+      server: https://kubernetes.default.svc
+    - namespace: flaresolverr
+      server: https://kubernetes.default.svc
+    - namespace: openwrt
+      server: https://kubernetes.default.svc
+    - namespace: monitoring
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+    - group: ''
+      kind: Namespace
+  namespaceResourceBlacklist:
+    - group: ''
+      kind: ResourceQuota
+    - group: ''
+      kind: LimitRange
+    - group: ''
+      kind: NetworkPolicy
+  selfHeal: true
+  syncWave: 0
