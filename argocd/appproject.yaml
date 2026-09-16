@@ -27,5 +27,3 @@ spec:
       kind: LimitRange
     - group: ''
       kind: NetworkPolicy
-  selfHeal: true
-  syncWave: 0
