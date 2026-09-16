@@ -44,7 +44,7 @@ Bootstrap path: install ArgoCD first → configure AppProject + repos → create
 - **Repo access:** one (or more) Git repositories registered as `Repository` CRDs. The app-configs repo is the primary one. Use a deploy key (SSH) or HTTPS token — SSH deploy key is simpler for a single-read-only repo.
 - **AppProject:** create one `AppProject` per logical group (e.g. `homelab-apps`). Scope it to the namespaces where apps actually run. Restrict `source.repos` to the app-configs repo only.
 - **Application CRs:** one `Application` per app. Each points at a path in the app-configs repo (e.g. `apps/jellyfin/`). Sync policy: `automated` with `prune=true` and `selfHeal=true` for hands-off operation; or `manual` if you want a confirmation gate — pick per app.
-- **UI / CLI:** expose the ArgoCD UI behind an ingress (basic auth or Dex later if needed). `argocd` CLI available for ad-hoc troubleshooting.
+- **UI / CLI:** expose the ArgoCD UI behind an HTTPRoute (basic auth or Dex later if needed). `argocd` CLI available for ad-hoc troubleshooting.
 
 ### 2. App Configuration Repo (`app-configs`)
 
@@ -74,7 +74,7 @@ app-configs/
 
 Choose one of:
 
-- **Raw manifests** — simplest. Each app dir is a self-contained set of K8s YAMLs (Deployment, Service, Ingress, ConfigMap, Secret references). ArgoCD applies them directly.
+- **Raw manifests** — simplest. Each app dir is a self-contained set of K8s YAMLs (Deployment, Service, HTTPRoute, ConfigMap, Secret references). ArgoCD applies them directly.
 - **Helm** — if apps already have charts (e.g. Jellyfin has a community Helm chart), use `source.helm` in the Application. Values live in `values.yaml` in the app dir, and ArgoCD renders the chart.
 
 Recommendation: **start with raw manifests** for apps that don't have a good chart, and **Helm** where a chart saves effort. No need for a custom umbrella chart.
@@ -85,7 +85,7 @@ A minimal per-app set:
 
 - `Namespace` (if not shared)
 - `Deployment` + `Service`
-- `Ingress` (if exposed)
+- `HTTPRoute` (if exposed) — see `docs/gateway-api.md`
 - `ConfigMap` for non-secret config
 - `Secret` reference for credentials (create externally or via SealedSecrets/ExternalSecrets later — out of scope for v1)
 - `PVC` if the app needs persistent storage
@@ -98,7 +98,7 @@ apps/jellyfin/
 ├── namespace.yaml
 ├── deployment.yaml       # image: jellyfin/jellyfin, ports, resources
 ├── service.yaml          # ClusterIP or NodePort
-├── ingress.yaml          # optional, path-based
+├── httproute.yaml        # optional — Gateway API routing, see docs/gateway-api.md
 ├── configmap.yaml        # jellyfin config overrides
 ├── pvc.yaml              # /config, /data mounts
 └── values.yaml           # if Helm
@@ -118,7 +118,7 @@ CI runs on every push to the app-configs repo. The goal is to catch obvious mist
 | Kubernetes resource validation (client-side) | `kubectl apply --dry-run=client -f <file>` | Catches API schema errors without a server |
 | Namespace scoping check (lightweight) | Custom script: every namespaced resource has a `namespace` field matching the app dir | Prevents cross-app collisions |
 | Image tag pinning check | Custom script: warn if `latest` or no tag is used | Homelab stability — pinned tags avoid surprise restarts |
-| Required fields present | Custom script per app type: Deployment has `replicas` or `strategy`, Service has `ports`, Ingress has `host` | Basic completeness check |
+| Required fields present | Custom script per app type: Deployment has `replicas` or `strategy`, Service has `ports`, HTTPRoute has `host` | Basic completeness check |
 | ArgoCD Application CR validation | `kubectl --dry-run=client` on the argocd/ dir | Catches broken ArgoCD refs |
 
 #### CI pipeline outline
@@ -175,7 +175,7 @@ RBAC in this plan has two layers: **cluster-level** (who can do what in Kubernet
 | Human admin | `cluster-admin` or admin `ClusterRole` | Cluster | You, for setup and troubleshooting |
 | Read-only viewer | `view` ClusterRole | Cluster or per-namespace | Optional: family members or CI read-only access |
 
-The ArgoCD namespace access pattern: create a `Role` per app namespace with the resources ArgoCD needs to manage (Deployment, Service, Ingress, ConfigMap, Secret, PVC, etc.), then bind it with a `RoleBinding` to the `argocd-server` ServiceAccount (or a dedicated `argocd-applier` SA if you prefer). This keeps ArgoCD from touching namespaces it shouldn't.
+The ArgoCD namespace access pattern: create a `Role` per app namespace with the resources ArgoCD needs to manage (Deployment, Service, HTTPRoute, ConfigMap, Secret, PVC, etc.), then bind it with a `RoleBinding` to the `argocd-server` ServiceAccount (or a dedicated `argocd-applier` SA if you prefer). This keeps ArgoCD from touching namespaces it shouldn't.
 
 #### ArgoCD-level RBAC (optional, v1 scope)
 
@@ -205,7 +205,7 @@ data:
 
 1. Provision the cluster (already done — this plan assumes an existing cluster).
 2. Install ArgoCD via Helm into `argocd` namespace.
-3. Change the ArgoCD admin password; optionally expose the UI via Ingress.
+3. Change the ArgoCD admin password; optionally expose the UI via HTTPRoute.
 4. Create the `app-configs` repo on GitHub.
 5. Add the repo as an ArgoCD `Repository` (SSH deploy key or HTTPS token).
 6. Create the `AppProject` CR in ArgoCD (`homelab-apps`).
@@ -234,7 +234,7 @@ Add cluster-level monitoring with the `kube-prometheus-stack` Helm chart. This i
 - Chart: `prometheus-community/kube-prometheus-stack`.
 - Values to set (in `apps/monitoring/values.yaml`):
   - `grafana.adminPassword` (or leave blank and read the auto-generated one from the Secret).
-  - `grafana.ingress.enabled=true` + host/path — so you can reach Grafana without port-forwarding.
+  - External access is via `HTTPRoute` in `apps/monitoring/httproute.yaml` — the chart's built-in ingress is disabled (see that file).
   - `prometheus.prometheusSpec.resources` — set requests/limits (e.g. 256Mi–512Mi memory). The chart defaults can be heavy for a small homelab; size this to your cluster.
   - `alertmanager.enabled` — leave `true` (bundle default) or set `false` if you don't want it at all. No routes configured either way in v1.
   - `kubeStateMetrics.enabled=true` (default) and `nodeExporter.enabled=true` (default) — keep both.
@@ -249,7 +249,7 @@ Add cluster-level monitoring with the `kube-prometheus-stack` Helm chart. This i
 ### 8. What's Out of Scope (for now)
 
 - **SealedSecrets / ExternalSecrets** — handle secrets manually for v1; add a secrets manager when the number of credentials grows.
-- **Ingress controller** — assume one is already running (nginx, traefik, etc.). If not, that's a prerequisite step, not part of this plan.
+- **Ingress controller** — assume one is already running (Traefik + Gateway API, etc.). If not, that's a prerequisite step, not part of this plan. See `docs/gateway-api.md` for the full Gateway API plan.
 - **Cert-manager / TLS** — use the ingress controller's default cert handling or manually managed certs in v1.
 - **Alerting pipeline** — Alertmanager is included in the chart but no alert routes (email, Slack, PagerDuty) are configured in v1. Add routes when you need actual alerts.
 - **App-level ServiceMonitors** — Prometheus scrapes cluster metrics by default. Per-app ServiceMonitor CRs come later when you care about app-specific metrics.
@@ -286,7 +286,7 @@ homelab-apps/
 │   ├── openwrt/
 │       └── ...
 │   └── monitoring/
-│       └── ... (kube-prometheus-stack values + ingress)
+│       └── ... (kube-prometheus-stack values + HTTPRoute)
 ├── .github/
 │   └── workflows/
 │       └── validate.yaml
@@ -307,7 +307,7 @@ These were either answered by the user or selected as the industry-standard prac
 | 1 | Cluster type / CNI | **kubeadm** (user-provided). CNI: assume a running CNI (Calico, Flannel, etc.) — manifests are CNI-agnostic. | kubeadm is self-hosted; storage class and ingress are cluster-specific. |
 | 2 | OpenWrt networking | **`hostNetwork: true` + `privileged: true` Pod/Deployment**, running on a dedicated node if possible. | OpenWrt is a router — it needs to see/manipulate raw traffic and routing tables. Host networking is the common homelab pattern for router pods. If node isolation matters, pin it to a dedicate node via `nodeSelector`/`affinity`. Flag: validate early — this is the one manifest that isn't portable. |
 | 3 | Secrets v1 | **SealedSecrets** (Bitnami SealedSecrets controller). Commit encrypted Secrets to the Git repo; the controller decrypts them in-cluster. | Fits the GitOps model (everything in Git, encrypted at rest in the repo). Industry standard for ArgoCD-based GitOps. No external secrets store needed in v1. |
-| 4 | Ingress controller | **`ingress-nginx`** (community Kubernetes ingress-nginx, not the deprecated older chart). Deploy as a prerequisite before app Ingresses are created. | Most widely used ingress controller for kubeadm/self-hosted clusters. If one is already running, skip this — it's only a prerequisite when absent. |
+| 4 | Ingress controller | **Traefik + Kubernetes Gateway API** (Traefik Helm chart as the data plane, Gateway API CRDs for routing). Install Traefik + GatewayClass + Gateway as a prerequisite before app HTTPRoutes are created. | Gateway API is the Kubernetes project's direction (Ingress API is frozen). Traefik implements the Gateway API and is actively maintained — unlike the retired community ingress-nginx. Covers host/path routing, TLS (with ACME built-in), and future Gateway API features (header matching, weighted traffic splitting). If one is already running, skip this — it's only a prerequisite when absent. |
 | 5 | Cluster RAM / node count | **Proceed with `kube-prometheus-stack` as-is.** Assumes a typical homelab with ≥2 nodes and enough aggregate RAM for the stack (~500Mi–1Gi for Prometheus). | If the cluster is very small (e.g. single node <4Gi), flag it and we'll trim `prometheus.prometheusSpec.resources` or fall back to a lighter Prometheus + Grafana pair. For now, build against the chart defaults with sane resource caps. |
 
 ### Open Questions (remaining — nothing blocks building)

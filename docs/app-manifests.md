@@ -8,7 +8,7 @@ This doc describes the manifest pattern for each app in the `homelab-apps` repo 
 
 Each app lives under `apps/<name>/` in the `homelab-apps` repo. The contents are one or both of:
 
-- **Raw manifests** — self-contained K8s YAML files (Deployment, Service, Ingress, ConfigMap, SealedSecret reference, PVC).
+- **Raw manifests** — self-contained K8s YAML files (Deployment, Service, HTTPRoute, ConfigMap, SealedSecret reference, PVC).
 - **Helm values** — `values.yaml` + optional chart files, when using a chart (monitoring does this).
 
 ```
@@ -17,7 +17,7 @@ apps/
 │   ├── namespace.yaml
 │   ├── deployment.yaml
 │   ├── service.yaml
-│   ├── ingress.yaml          # optional — remove if the app isn't exposed
+│   ├── httproute.yaml          # optional — remove if the app isn't exposed
 │   ├── configmap.yaml        # optional — remove if no non-secret config
 │   ├── sealedsecret.yaml     # optional — remove if no secrets
 │   └── pvc.yaml              # optional — remove if no persistent storage
@@ -42,8 +42,8 @@ A complete app dir contains as many of these as the app actually needs — skip 
 |---|---|---|
 | `namespace.yaml` | Yes (if the app gets its own namespace) | Declares the namespace. ArgoCD can auto-create it via `CreateNamespace=true`, but committing the namespace manifest makes the desired state explicit and lets you attach labels/annotations. |
 | `deployment.yaml` | Yes (for daemon/stateful apps) | The workload. Includes image, replicas, ports, resource requests/limits, volume mounts, and (for OpenWrt) host networking/privileged flags. |
-| `service.yaml` | Yes (if the app is accessed within the cluster or via Ingress) | Exposes the pod ports. ClusterIP for internal, NodePort only if you need direct node access, LoadBalancer only if your cluster has an LB. |
-| `ingress.yaml` | Optional | External HTTP/HTTPS access. Requires an ingress controller (ingress-nginx per the plan). Remove if the app is internal-only. |
+|| `service.yaml` | Yes (if the app is accessed within the cluster or via HTTPRoute) | Exposes the pod ports. ClusterIP for internal, NodePort only if you need direct node access, LoadBalancer only if your cluster has an LB. |
+- `HTTPRoute` resources for external access. Use `httproute.yaml` in the app dir — see `docs/gateway-api.md` for the pattern. Remove if the app is internal-only.
 | `configmap.yaml` | Optional | Non-secret configuration. Remove if the app takes all config from env vars or a Helm values file. |
 | `sealedsecret.yaml` | Optional | Secret delivery via SealedSecrets (the plan's v1 choice). Remove if the app has no secrets. |
 | `pvc.yaml` | Optional | Persistent storage. Remove if the app is stateless. |
@@ -152,38 +152,39 @@ spec:
       protocol: TCP
 ```
 
-Use `ClusterIP` unless you have a specific need for `NodePort` or `LoadBalancer`. The Ingress (if any) fronts the `ClusterIP` service.
+Use `ClusterIP` unless you have a specific need for `NodePort` or `LoadBalancer`. The HTTPRoute (if any) fronts the `ClusterIP` service.
 
-### 3.4 Ingress
+### 3.4 HTTPRoute
 
 ```yaml
-# apps/<name>/ingress.yaml
-apiVersion: networking.k8s.io/v1
-kind: Ingress
+# apps/<name>/httproute.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
 metadata:
   name: <name>
   namespace: <name>
   labels:
     app.kubernetes.io/name: <name>
     app.kubernetes.io/instance: <name>
-  annotations:
-    nginx.ingress.kubernetes.io/proxy-body-size: "100m"   # adjust per app
 spec:
-  ingressClassName: nginx
+  parentRefs:
+    - name: homelab-gateway
+      namespace: traefik
+  hostnames:
+    - "<name>.<your-domain>"
   rules:
-    - host: <name>.<your-domain>
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: <name>
-                port:
-                  number: 80
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: <name>
+          port: 80
 ```
 
-Replace `<your-domain>` with your actual domain. If you don't have one yet, use a placeholder and fill it in before first sync. The `proxy-body-size` annotation is optional — set it if the app handles uploads (Jellyfin does).
+Replace `<your-domain>` with your actual domain. The `parentRefs` points at the cluster's `homelab-gateway` (see `docs/gateway-api.md`). If you don't have a domain yet, use a placeholder and fill it in before first sync.
+
+For apps that need request modifications (body-size limit, headers, rate limiting), use a Traefik `Middleware` CRD attached via the `HTTPRoute`'s `filters` field — equivalent to the old nginx annotations, different wiring.
 
 ### 3.5 ConfigMap
 
@@ -261,64 +262,43 @@ Set `storageClassName` to your cluster's storage class if the default isn't what
 
 ---
 
-## 4. Helm values pattern (monitoring)
+## 4. HTTPRoute pattern (external access)
 
-Monitoring is the only app using Helm in v1. The values file is `apps/monitoring/values.yaml`, and the ArgoCD `Application` CR in `homelab-git-mgmt` references the chart repo and this values file.
+HTTPRoute resources replace Ingress for external access. Each exposed app gets an `HTTPRoute` in its namespace that attaches to the cluster's `homelab-gateway` (see `docs/gateway-api.md`).
+
+**Helm apps (monitoring):** the chart's built-in ingress is disabled; a standalone `HTTPRoute` in the app dir handles external access. The chart still creates the Grafana Service — the `HTTPRoute` references it by name.
+
+**Raw-manifest apps (jellyfin):** the `HTTPRoute` is committed alongside the Deployment and Service.
+
+Pattern (see `apps/jellyfin/httproute.yaml` and `apps/monitoring/httproute.yaml` for committed examples):
 
 ```yaml
-# apps/monitoring/values.yaml
-ingress:
-  enabled: true
-  ingressClassName: nginx
-  annotations:
-    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
-  hosts:
-    - monitoring.<your-domain>
-  paths:
-    - /
-  pathType: Prefix
-
-grafana:
-  adminPassword: "set-via-external-secret-or-patch"
-  ingress:
-    enabled: false   # controlled by top-level ingress
-  resources:
-    requests:
-      cpu: 100m
-      memory: 128Mi
-    limits:
-      cpu: 500m
-      memory: 512Mi
-
-prometheus:
-  prometheusSpec:
-    resources:
-      requests:
-        cpu: 200m
-        memory: 512Mi
-      limits:
-        cpu: 1000m
-        memory: 1Gi
-    retention: 15d
-    storageSpec:
-      volumes:
-        - name: data
-          persistentVolume:
-            claimName: monitoring-prometheus-data
-  ingress:
-    enabled: false
-
-alertmanager:
-  enabled: true
-  # No routes configured in v1 — see docs/PLAN.md
-
-kubeStateMetrics:
-  enabled: true
-nodeExporter:
-  enabled: true
+# apps/<name>/httproute.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: <name>
+  namespace: <name>
+  labels:
+    app.kubernetes.io/name: <name>
+    app.kubernetes.io/instance: <name>
+spec:
+  parentRefs:
+    - name: homelab-gateway
+      namespace: traefik
+  hostnames:
+    - "<name>.<your-domain>"
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: <name>
+          port: 80
 ```
 
-The `retention: 15d` and the PVC for Prometheus data give you a couple of weeks of history. Adjust as needed.
+The `port` field on `backendRefs` can reference a port by **number** (as above) or by **name** if the Service uses named ports. The `parentRefs.namespace` is `traefik` because the Gateway is deployed there; the Gateway's `allowedRoutes.namespaces.from: All` permits cross-namespace attachment.
 
 ---
 
@@ -329,7 +309,7 @@ The `retention: 15d` and the PVC for Prometheus data give you a couple of weeks 
 - Image: `jellyfin/jellyfin` with a pinned tag (e.g. `10.9.0`).
 - Needs persistent storage for config and media — at least two PVCs if you want config and media separate, or one combined. Plan for the media path to be large.
 - Media is typically mounted from the host or a NAS — decide whether to use a hostPath (not portable, but simple for a single-node homelab) or a shared PVC.
-- Ingress: yes, with a reasonable `proxy-body-size`.
+- HTTPRoute: yes, with a reasonable body-size limit via Traefik Middleware if needed (see `docs/gateway-api.md`).
 - Secrets: license key and admin password via SealedSecret.
 - No native Prometheus metrics — cluster-level metrics only for now (see `docs/PLAN.md`). A `ServiceMonitor` can be added later if you run an exporter.
 
@@ -340,7 +320,7 @@ Skeleton committed in `apps/jellyfin/`.
 - Image: `flaresolverr/flaresolverr` with a pinned tag.
 - Lightweight — small resource requests.
 - No persistent storage needed (cache can be ephemeral).
-- Ingress: yes if you expose it to other apps; internal ClusterIP service is enough if only used cluster-internally.
+- HTTPRoute: yes if you expose it to other apps; internal ClusterIP service is enough if only used cluster-internally.
 - Secrets: maybe a config token, via SealedSecret if needed.
 - No native Prometheus metrics.
 
@@ -378,7 +358,7 @@ When you add a future app, follow this sequence:
 2. Add `namespace.yaml` if the app gets its own namespace.
 3. Add `deployment.yaml` with a pinned image tag and resource requests/limits.
 4. Add `service.yaml` if the app needs a service.
-5. Add `ingress.yaml` if the app is exposed externally.
+5. Add `httproute.yaml` if the app is exposed externally (see section 4 for the pattern).
 6. Add `configmap.yaml` / `sealedsecret.yaml` / `pvc.yaml` as needed.
 7. Add the `Application` CR in `homelab-git-mgmt/argocd/applications/<name>.yaml`, pointing at `apps/<name>/`.
 8. Update the `AppProject`'s `destinations` if you added a new namespace (or use a wildcard — see `docs/rbac.md` for the tradeoff).

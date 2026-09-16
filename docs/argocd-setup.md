@@ -58,7 +58,7 @@ kubectl port-forward svc/argocd-server -n argocd 8080:443 &
 # https://localhost:8080
 ```
 
-When you're ready to expose it permanently, add an Ingress (see the ingress note at the end).
+When you're ready to expose it permanently, add an HTTPRoute (see `docs/gateway-api.md` section 8).
 
 ---
 
@@ -207,7 +207,7 @@ spec:
 
 ### Pattern (Helm app — monitoring)
 
-Monitoring uses the `kube-prometheus-stack` chart. The `Application` CR references the Helm repo and the values file lives in the GitOps repo.
+Monitoring uses the `kube-prometheus-stack` chart. The `Application` CR references the Helm repo and the values file lives in the GitOps repo. The chart's built-in ingress is disabled — external access is handled by the `HTTPRoute` in `apps/monitoring/httproute.yaml` (see `docs/gateway-api.md`).
 
 ```yaml
 # argocd/applications/monitoring.yaml
@@ -229,13 +229,7 @@ spec:
         - values.yaml
       values: |
         ingress:
-          enabled: true
-          ingressClassName: nginx
-          hosts:
-            - monitoring.<your-domain>
-          paths:
-            - /
-          annotations: {}
+          enabled: false   # Gateway API HTTPRoute handles external access (see docs/gateway-api.md)
         grafana:
           adminPassword: <set-via-sealedsecret-or-external>
           ingress:
@@ -346,44 +340,35 @@ To rotate a secret: create a new `SealedSecret` with a new name (or overwrite th
 
 ---
 
-## 8. Ingress for ArgoCD UI (optional)
+## 8. HTTPRoute for ArgoCD UI (optional)
 
-When you're ready to expose the ArgoCD UI beyond port-forwarding:
+When you're ready to expose the ArgoCD UI beyond port-forwarding, add an `HTTPRoute` in the `argocd` namespace:
 
 ```yaml
-apiVersion: networking.k8s.io/v1
-kind: Ingress
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
 metadata:
   name: argocd-ui
   namespace: argocd
-  annotations:
-    nginx.ingress.kubernetes.io/auth-type: basic
-    nginx.ingress.kubernetes.io/auth-secret: argocd-ui-auth
-    nginx.ingress.kubernetes.io/auth-realm: "ArgoCD"
+  labels:
+    app.kubernetes.io/name: argocd
 spec:
-  ingressClassName: nginx
+  parentRefs:
+    - name: homelab-gateway
+      namespace: traefik
+  hostnames:
+    - "argocd.<your-domain>"
   rules:
-    - host: argocd.<your-domain>
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: argocd-server
-                port:
-                  number: 80
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: argocd-server
+          port: 80
 ```
 
-Create the basic-auth secret:
-
-```bash
-kubectl create secret generic argocd-ui-auth \
-  --namespace argocd \
-  --from-file=auth
-```
-
-Where `auth` is an htpasswd file. For a homelab, this is enough; Dex/SSO comes later if you need it.
+ArgoCD handles its own authentication (the admin password set at install). For a homelab this is enough; add a Traefik `Middleware` CRD for external auth or move to Dex/SSO later if needed.
 
 ---
 

@@ -17,13 +17,7 @@ spec:
         - values.yaml
       values: |
         ingress:
-          enabled: true
-          ingressClassName: nginx
-          hosts:
-            - monitoring.<your-domain>
-          paths:
-            - /
-          pathType: Prefix
+          enabled: false   # Gateway API HTTPRoute handles external access (see docs/gateway-api.md)
         grafana:
           adminPassword: ""
         prometheus:
