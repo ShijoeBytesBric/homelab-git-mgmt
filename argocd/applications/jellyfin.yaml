@@ -9,7 +9,7 @@ metadata:
 spec:
   project: homelab-apps
   source:
-    repoURL: git@github.com:shijoe/homelab-apps.git
+    repoURL: git@github.com:ShijoeBytesBric/homelab-apps.git
     targetRevision: main
     path: apps/jellyfin
   destination:

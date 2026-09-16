@@ -7,7 +7,7 @@ metadata:
 spec:
   description: Homelab application group
   sourceRepos:
-    - git@github.com:shijoe/homelab-apps.git
+    - git@github.com:ShijoeBytesBric/homelab-apps.git
   destinations:
     - namespace: jellyfin
       server: https://kubernetes.default.svc

@@ -1,13 +1,16 @@
 ---
-apiVersion: v1
-kind: Secret
+apiVersion: bitnami.com/v1alpha1
+kind: SealedSecret
 metadata:
   name: home-lab-cluster-repo
   namespace: argocd
-  labels:
-    argocd.argoproj.io/secret-type: repository
-type: Opaque
-stringData:
-  url: git@github.com:shijoe/homelab-apps.git
-  sshPrivateKey: |
-    <contents of ~/.ssh/argocd-deploy-key — paste the private key here>
+spec:
+  encryptedData:
+    sshPrivateKey: AgAepO0nYB1feM5m/kgtTWnVM3C73a6sAnwHJpeEfhhPu2CLwAhKEizzMW21cA4XlI//bD3Nguli+UnG1uwPEWVqqBxTxDp2pDX30KEfJDDqfhM6xa1NbDRM33+4stSAyQNGSyBRnVI+B+jiAoXGZtGTqmTdRp9RHuhYxPy8JHuCpveVPqX/jFD7Jmr4hm82NhDJU7MushhSCaMR1RBAkHaEeMkoFbwWvZo0ABIy6zSBERxQT8xf3By2r41o+fizopF0bDcDY6tYo7gmIQsX7YYV5rQdsqMMyrNsNgdhh0ajjCNVfEP+oZNXyZk0c3kIU9kRTZnDikNpaLec0I/yncBrv3PwHJPkSHxROTVktq8JKGPGTCLHRIL5Kmp6MjskJmdDdwAAlqVSaqQQH10der22Q5B4GBIe67Z/Mvdkez3qhx8Z7OFyvCiex3TeaO6oGkjndGGcHQgFrYV8WBYMvnFVfrhNAxTz7eqR4ml7RjgG0I3JyB1FsEA/4jJaeaVhtWXqyKqU5nozNz0iauChX1lVBloYlfkCp8HHLKhM9ZhmrOi+y35HN8fp4iIGXZYDWXOkGFaWNrC2d+xGf7r53mWxgZaLlWxRQOzLF7nef8yeADEb4NFrTZnirGjB2JIwfx30VAfVY5rbUVhoRVfuIwy/eJPXTQFyFbIcuArSUz8kPMqwD4SUHcG++6Au0qPgZG70IQiaPTczZBlZX0Ifx6+IEbxk7hEh7X6GNBJ7iYTNuk/Aabxbbi59CiQ5NUItImtpIUbrh2pz7yiPpjnj1Ig0JuIpPXi8nRVyddzE0XCyYvDk5LIeGtFrxLGlABTPBttgf1AkP7y/291NdcBaD2OyPO+bmT8+2wf9BAucknhFI7yDD4LEdDyfWdMo51dSb4/M9Pnx7s91nWyO22eWZoJtXgBSEIKFFwpKadS3a43pmFYi3yM0H+xX+8LkC1Bu1PYJgvF/KLvt49DyMtYq7wOEyOmSms41V2Z6R1Q0RIctaYLerFMKnMEW/e459545ef+1swjfoGLOFAPvQIY7PI9cqqdtNg+akLDNsltZBio76M9HmMqbxQfpiSO8vpTg0JOvSqGc0kGTF1M8rETim05BZ2QNCkvOs6gaTVPY7yl43L80+X08PoicNEisNDvdAo5oygZtmXZ628hVq2kE5gH2aCk+ehL2n6/aw1e0z/XFWucOaiuHnS4gJZ332hlARCgbp/4y9JuYfD6j/GJEWdhTOSXQ5JhDpBNE9PY=
+    url: AgCKQOEJuESv4F7uUjeljWs2pWz53u5Xk74KxYrzYXSUJe7C7SjfA7d+nRjPMlHny1oitooOX3ihId75jg40sLIrN3ovnPM6HmJBtzezwJYtm/1c33o/NBMuCHK25lxIek9yvgOsFTp43gZl479N6z+ywl/12f4+0hH6nau4mxiBB7QQfMzHtS8mBHaGCKbA7ydQJn13p/AEkvX8ISmE6RxuuC5kYljCBn/IBy6V0jelYXtBMGTxnIQBgV/9yKEIUhK+g1wLkxikDRTP4oSh+m0+I2ziohGMA3PFWuaAhUdn2feDXQb2JwIQqJCZo6YPoqf+KErmra7icSEo3qJYWOwxRsWwfOpRvf7yaZ4DXLCzxWemcUIJXgs5d9db8lspDGNYAOSXNr0QHKeKzKppMsDEa2piQPTa6XfI2n5OOd+4GSAbndiN1C7doJe3ivamDBpzjPQXQ/o2bStzPMC8PwlpZI0g+boUSrBMiQ2LW5D55B1DnzOAvSHLCzNXG0Cc4NPHEmuO9i+05qYFJKqfRQXDYIRjIbyMz/x9nyKRXew0UE6/MkOwSyR6vX/jpteHyXcyKMigtbnJq/4pJBz9h5ALBgMZzvw8Z2Iles6RWKp8zS424LU59wQvhK7YP9PZ4ycEIDFi6mYefG6XE7ECFKqD54tQJbbiOrAtj9BGV5YPVkDHwQbQ+Wwn0I9Nhli8NFJMXhU6ayDknoEErlCqRJGvQUAid0MAUbeQTFHdeVNwRzaOHhpcyA==
+  template:
+    metadata:
+      labels:
+        argocd.argoproj.io/secret-type: repository
+      name: home-lab-cluster-repo
+      namespace: argocd
