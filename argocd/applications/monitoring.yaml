@@ -31,10 +31,12 @@ spec:
                 memory: 1Gi
             retention: 15d
             storageSpec:
-              volumes:
-                - name: data
-                  persistentVolume:
-                    claimName: monitoring-prometheus-data
+              volumeClaimTemplate:
+                spec:
+                  accessModes: ["ReadWriteOnce"]
+                  resources:
+                    requests:
+                      storage: 20Gi
         alertmanager:
           enabled: true
         kubeStateMetrics:
